@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#243e32">
+  <meta name="description" content="Tự học lập trình C trong 7 ngày bằng bài học tiếng Việt, ví dụ, bài tập và câu hỏi tự kiểm tra.">
+  <title>C mỗi ngày — Tự học C trong 7 ngày</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23243e32'/%3E%3Ctext x='15' y='47' font-size='45' font-family='monospace' fill='%23c4f0d0'%3EC%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./lessons.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Đến nội dung</a>
+  <aside class="sidebar" id="sidebar">
+    <a href="#" class="brand" aria-label="C mỗi ngày — Trang chủ"><span class="brand-mark">C<span>_</span></span><span>C mỗi ngày<span class="brand-subtitle">BẮT ĐẦU TỪ DÒNG CODE ĐẦU TIÊN</span></span></a>
+    <div class="course-label">GÓC HỌC TẬP CỦA BẠN</div>
+    <nav aria-label="Điều hướng chính">
+      <a href="#" data-nav="home"><span data-icon="home"></span>Tổng quan</a>
+      <a href="#lo-trinh" data-nav="roadmap"><span data-icon="book"></span>Lộ trình 7 ngày<span class="nav-count">7</span></a>
+      <a href="#so-tay" data-nav="reference"><span data-icon="code"></span>Sổ tay C</a>
+      <a href="#tien-do" data-nav="progress"><span data-icon="chart"></span>Tiến độ của bạn</a>
+    </nav>
+    <div class="sidebar-course"><div class="small-kicker">KHÓA HỌC ĐANG THEO</div><strong>C căn bản trong 7 ngày</strong><div class="progress-track"><span id="side-progress"></span></div><div class="muted" id="side-progress-label">0 / 7 ngày hoàn thành</div></div>
+    <div class="sidebar-bottom"><button class="arduino-help" data-action="arduino"><span data-icon="chip"></span><span>Học với Arduino IDE<span>Xem cách chạy bài C</span></span><span data-icon="arrow-up"></span></button><p>Tiến độ được lưu trên trình duyệt này.</p></div>
+  </aside>
+  <div class="page-shell">
+    <header class="topbar"><div class="topbar-left"><button class="icon-button menu-toggle" data-action="menu" aria-label="Mở menu" aria-expanded="false"><span data-icon="menu"></span></button><span class="breadcrumb">Góc học tập <span>/</span> <strong id="breadcrumb">Tổng quan</strong></span></div><div class="topbar-right"><label class="search"><span data-icon="search"></span><input type="search" id="lesson-search" placeholder="Tìm bài học…" aria-label="Tìm bài học"><kbd>/</kbd></label><span class="avatar" title="Góc học tập của bạn">B</span></div></header>
+    <main id="main" tabindex="-1"></main>
+    <footer class="footer"><span>C mỗi ngày <span class="footer-dot">·</span> Học chậm, hiểu chắc.</span><a href="https://docs.arduino.cc/arduino-cli/sketch-build-process/" target="_blank" rel="noopener noreferrer">Tài liệu Arduino <span aria-hidden="true">↗</span></a></footer>
+  </div>
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">Thực hành C với Arduino IDE</h2><button class="icon-button" data-action="close-help" aria-label="Đóng hướng dẫn">✕</button></div><p>Ví dụ trong bài học dùng <code>main()</code> và <code>printf()</code> để chạy bằng trình biên dịch C. Với Arduino IDE, hãy đưa hàm cần học vào tab <code>bai_tap.c</code> và gọi hàm từ sketch.</p><ol><li>Tạo sketch mới, thêm tab tên <code>bai_tap.c</code>.</li><li>Nhập hàm C sau vào tab này.</li></ol><pre><code>int doi_phut_sang_giay(int phut)
+{
+    return phut * 60;
+}</code></pre><p>Trong tab <code>.ino</code>, dùng cầu nối dưới đây rồi nạp lên bo mạch.</p><pre><code>extern "C" int doi_phut_sang_giay(int phut);
+
+void setup() {
+    Serial.begin(9600);
+}
+
+void loop() {
+    Serial.println(doi_phut_sang_giay(2));
+    delay(1000);
+}</code></pre><p>Mở Serial Monitor ở <strong>9600 baud</strong> để thấy <strong>120</strong> mỗi giây. Các hàm C bạn học sẽ nằm trong tệp <code>.c</code>.</p><a class="text-link" href="https://docs.arduino.cc/arduino-cli/sketch-build-process/" target="_blank" rel="noopener noreferrer">Đọc hướng dẫn biên dịch của Arduino ↗</a></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
