@@ -2,7 +2,11 @@
   'use strict';
 
   const lessons = window.C_LESSONS;
-  const storageKey = 'c-moi-ngay-v1';
+  const lessonCount = lessons.length;
+  const questionCount = lessons.reduce((total, lesson) => total + lesson.quiz.length, 0);
+  const storageKey = 'c-moi-ngay-15-v2';
+  const legacyStorageKey = 'c-moi-ngay-v1';
+  const curriculum = 'c-zero-15';
   const main = document.querySelector('main');
   const icons = {
     home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
@@ -23,6 +27,7 @@
     leaf: '<path d="M20 3c1 11-2 17-9 17a7 7 0 0 1-7-7C4 6 12 7 20 3ZM4 21 15 10"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>'
   };
+  let legacyState = readLegacyState();
   let state = readState();
   let currentTab = 'lesson';
   let searchTerm = '';
@@ -40,23 +45,48 @@
     root.querySelectorAll('[data-icon]').forEach(element => { element.innerHTML = icon(element.dataset.icon); });
   }
 
-  function normalizeState(value) {
+  function normalizeState(value, maximumDay = lessonCount) {
     const clean = {completed: [], quiz: {}, drafts: {}};
     if (!value || typeof value !== 'object') return clean;
-    if (Array.isArray(value.completed)) clean.completed = [...new Set(value.completed.filter(day => Number.isInteger(day) && day >= 1 && day <= 7))];
+    if (Array.isArray(value.completed)) clean.completed = [...new Set(value.completed.filter(day => Number.isInteger(day) && day >= 1 && day <= maximumDay))];
     for (const lesson of lessons) {
+      if (lesson.day > maximumDay) continue;
       const entry = value.quiz?.[lesson.day];
       if (entry && Array.isArray(entry.answers)) {
-        clean.quiz[lesson.day] = {answers: lesson.quiz.map((question, index) => Number.isInteger(entry.answers[index]) && entry.answers[index] >= 0 && entry.answers[index] < question.options.length ? entry.answers[index] : null), graded: entry.graded === true};
+        const answers = lesson.quiz.map((question, index) => {
+          const answer = entry.answers[index];
+          return Number.isInteger(answer) && answer >= 0 && answer < question.options.length ? answer : null;
+        });
+        clean.quiz[lesson.day] = {
+          answers,
+          graded: entry.graded === true && answers.every(Number.isInteger)
+        };
       }
       if (typeof value.drafts?.[lesson.day] === 'string') clean.drafts[lesson.day] = value.drafts[lesson.day].slice(0, 100000);
     }
     return clean;
   }
 
+  function readLegacyState() {
+    try {
+      const saved = localStorage.getItem(legacyStorageKey);
+      return saved ? normalizeState(JSON.parse(saved), 7) : null;
+    } catch {
+      return null;
+    }
+  }
+
   function readState() {
     try { return normalizeState(JSON.parse(localStorage.getItem(storageKey))); }
     catch { return normalizeState(null); }
+  }
+
+  function mergeProgress(current, incoming) {
+    return {
+      completed: [...new Set([...current.completed, ...incoming.completed])],
+      drafts: {...current.drafts, ...incoming.drafts},
+      quiz: {...current.quiz, ...incoming.quiz}
+    };
   }
 
   function saveState() {
@@ -66,8 +96,8 @@
   }
 
   function updateProgress() {
-    document.querySelector('#side-progress').style.width = `${state.completed.length / 7 * 100}%`;
-    document.querySelector('#side-progress-label').textContent = `${state.completed.length} / 7 ngày hoàn thành`;
+    document.querySelector('#side-progress').style.width = `${state.completed.length / lessonCount * 100}%`;
+    document.querySelector('#side-progress-label').textContent = `${state.completed.length} / ${lessonCount} ngày hoàn thành`;
   }
 
   function toast(message) {
@@ -78,7 +108,7 @@
     toastTimer = setTimeout(() => element.classList.remove('visible'), 3500);
   }
 
-  function nextDay() { return lessons.find(lesson => !state.completed.includes(lesson.day))?.day || 7; }
+  function nextDay() { return lessons.find(lesson => !state.completed.includes(lesson.day))?.day || lessonCount; }
   function isDone(day) { return state.completed.includes(day); }
   function lessonFromRoute() { return lessons.find(lesson => `#bai-${lesson.day}` === location.hash); }
   function scoreFor(lesson) {
@@ -102,26 +132,25 @@
   }
 
   function renderCards() {
-    const symbols = ['{ }', 'if', 'for', '[ ]', 'f(x)', '.0', '</>'];
     const normalized = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
     const matches = lessons.filter(lesson => normalized(`${lesson.title} ${lesson.shortTitle} ${lesson.objective} ngay ${lesson.day}`).includes(normalized(searchTerm.trim())));
     if (!matches.length) return '<p class="empty-results">Chưa tìm thấy bài phù hợp. Thử “mảng”, “hàm” hoặc “ngày 1”.</p>';
-    return matches.map(lesson => `<a class="lesson-card ${lesson.day === nextDay() ? 'current' : ''} ${lesson.day === 7 ? 'final-card' : ''}" href="#bai-${lesson.day}"><div class="card-top"><span class="day-label">NGÀY ${String(lesson.day).padStart(2, '0')}</span><span class="lesson-symbol">${isDone(lesson.day) ? icon('check') : escape(symbols[lesson.day - 1])}</span></div><h3>${escape(lesson.title)}</h3><p>${escape(lesson.subtitle)}</p><div class="card-bottom"><span>${icon('clock')}45–60 phút</span><span class="card-action">${isDone(lesson.day) ? 'Đã hoàn thành' : lesson.day === nextDay() ? 'Bắt đầu học' : lesson.day === 7 ? 'Bài tổng hợp' : 'Xem bài học'}${icon('arrow')}</span></div></a>`).join('');
+    return matches.map(lesson => `<a class="lesson-card ${lesson.day === nextDay() ? 'current' : ''} ${lesson.day === lessonCount ? 'final-card' : ''}" href="#bai-${lesson.day}"><div class="card-top"><span class="day-label">NGÀY ${String(lesson.day).padStart(2, '0')}</span><span class="lesson-symbol">${isDone(lesson.day) ? icon('check') : escape(lesson.symbol || '{ }')}</span></div><h3>${escape(lesson.title)}</h3><p>${escape(lesson.subtitle)}</p><div class="card-bottom"><span>${icon('clock')}${escape(lesson.duration)}</span><span class="card-action">${isDone(lesson.day) ? 'Đã hoàn thành' : lesson.day === nextDay() ? 'Bắt đầu học' : lesson.day === lessonCount ? 'Bài tổng hợp' : 'Xem bài học'}${icon('arrow')}</span></div></a>`).join('');
   }
 
   function roadmapSection() {
-    return `<section id="roadmap"><div class="section-heading"><h2>Lộ trình của bạn</h2><span>7 ngày · Từng bước làm quen với C</span></div><div class="lesson-grid" id="lesson-grid">${renderCards()}</div></section>`;
+    return `<section id="roadmap"><div class="section-heading"><h2>Lộ trình của bạn</h2><span>${lessonCount} ngày · Bắt đầu từ con số 0</span></div><div class="lesson-grid" id="lesson-grid">${renderCards()}</div></section>`;
   }
 
   function renderHome(roadmapOnly = false) {
     if (roadmapOnly) {
-      main.innerHTML = `<div class="page-heading"><h1>Một tuần, bảy bước nhỏ.</h1><p>Mỗi bài gồm kiến thức, thực hành và 3 câu tự kiểm tra. Bạn có thể mở bài theo bất kỳ thứ tự nào.</p></div>${roadmapSection()}`;
+      main.innerHTML = `<div class="page-heading"><h1>Học C từ con số 0 trong 15 ngày.</h1><p>Bắt đầu ở ngày 1 để biết cách chạy chương trình. Mỗi bài giới thiệu từng ý nhỏ, có bài tập và 3 câu tự kiểm tra.</p></div>${roadmapSection()}`;
       return;
     }
     main.innerHTML = `<div class="welcome"><p>Chào bạn, <strong>hôm nay mình cùng học C nhé!</strong></p><span>${icon('sun')}Mỗi ngày một bước tiến</span></div>
-      <section class="hero"><div><div class="eyebrow">Lập trình C dành cho người mới</div><h1>Mỗi ngày một chút.<br>Tự viết chương trình C.</h1><p>Bắt đầu từ biến, đi qua vòng lặp, rồi tự hoàn thành chương trình đầu tiên trong 7 ngày.</p><a class="button primary" href="#bai-${nextDay()}">${state.completed.length ? 'Tiếp tục học' : 'Bắt đầu ngày 1'}${icon('arrow')}</a><div class="hero-foot">45–60 phút mỗi ngày, theo nhịp của bạn.</div></div><div class="hero-code" aria-label="Ví dụ chương trình C đầu tiên"><div class="code-titlebar"><i class="window-dot"></i><i class="window-dot"></i><i class="window-dot"></i><span>xin_chao.c</span></div><pre><code>${highlight('#include <stdio.h>\n\nint main(void) {\n    // Dòng code đầu tiên của bạn\n    printf("Xin chao, C!\\n");\n    return 0;\n}')}</code></pre><div class="hero-code-bottom"><span>→ Xin chao, C!</span><span>C · UTF-8</span></div></div></section>
-      <div class="metrics"><div class="metric"><span class="metric-icon">${icon('book')}</span><div><strong>7 ngày học</strong><small>Từ cơ bản đến bài tổng hợp</small></div></div><div class="metric"><span class="metric-icon">${icon('clock')}</span><div><strong>45–60 phút / ngày</strong><small>Đọc hiểu, tự viết, thử lại</small></div></div><div class="metric"><span class="metric-icon">${icon('check')}</span><div><strong>21 câu tự kiểm tra</strong><small>Củng cố sau mỗi bài học</small></div></div></div>
-      <div class="content-grid">${roadmapSection()}<aside class="home-aside"><section class="side-panel"><div class="panel-label">${icon('leaf')}Một buổi học của bạn</div><div class="session-step"><span class="step-icon">${icon('book')}</span><div><strong>Đọc và hiểu ví dụ</strong><p>10 phút · Đọc từng dòng code</p></div></div><div class="session-step"><span class="step-icon">${icon('terminal')}</span><div><strong>Tự tay viết lại</strong><p>25–35 phút · Thay đổi và thử nghiệm</p></div></div><div class="session-step"><span class="step-icon">${icon('check')}</span><div><strong>Tự kiểm tra</strong><p>10–15 phút · Dự đoán trước khi chạy</p></div></div></section><section class="side-panel project"><div class="panel-label">${icon('flag')}ĐÍCH ĐẾN CUỐI TUẦN</div><h3>Chương trình<br>thống kê điểm</h3><p>Tìm điểm cao nhất, tính trung bình và đếm số điểm đạt từ một mảng dữ liệu.</p><div class="project-bottom">${icon('code')}Bạn sẽ tự viết được.</div></section><p class="note">Một tuần để làm quen với nền tảng.<br>Hiểu bài nào, chắc bài đó.</p></aside></div>`;
+      <section class="hero"><div><div class="eyebrow">Lập trình C từ con số 0</div><h1>Mỗi ngày một chút.<br>Tự viết chương trình C.</h1><p>Tập chạy chương trình đầu tiên, đọc từng dòng code, rồi làm quen với biến, điều kiện và vòng lặp trong 15 ngày.</p><a class="button primary" href="#bai-${nextDay()}">${state.completed.length ? 'Tiếp tục học' : 'Bắt đầu ngày 1'}${icon('arrow')}</a><div class="hero-foot">30–60 phút mỗi ngày, theo nhịp của bạn.</div></div><div class="hero-code" aria-label="Ví dụ chương trình C đầu tiên"><div class="code-titlebar"><i class="window-dot"></i><i class="window-dot"></i><i class="window-dot"></i><span>xin_chao.c</span></div><pre><code>${highlight('#include <stdio.h>\n\nint main(void) {\n    // Dòng code đầu tiên của bạn\n    printf("Xin chao, C!\\n");\n    return 0;\n}')}</code></pre><div class="hero-code-bottom"><span>→ Xin chao, C!</span><span>C · UTF-8</span></div></div></section>
+      <div class="metrics"><div class="metric"><span class="metric-icon">${icon('book')}</span><div><strong>${lessonCount} ngày học</strong><small>Từ cơ bản đến bài tổng hợp</small></div></div><div class="metric"><span class="metric-icon">${icon('clock')}</span><div><strong>30–60 phút / ngày</strong><small>Đọc hiểu, tự viết, thử lại</small></div></div><div class="metric"><span class="metric-icon">${icon('check')}</span><div><strong>${questionCount} câu tự kiểm tra</strong><small>Củng cố sau mỗi bài học</small></div></div></div>
+      <div class="content-grid">${roadmapSection()}<aside class="home-aside"><section class="side-panel"><div class="panel-label">${icon('leaf')}Một buổi học của bạn</div><div class="session-step"><span class="step-icon">${icon('book')}</span><div><strong>Đọc và hiểu ví dụ</strong><p>10 phút · Đọc từng dòng code</p></div></div><div class="session-step"><span class="step-icon">${icon('terminal')}</span><div><strong>Tự tay viết lại</strong><p>15–35 phút · Thay đổi và thử nghiệm</p></div></div><div class="session-step"><span class="step-icon">${icon('check')}</span><div><strong>Tự kiểm tra</strong><p>5–15 phút · Dự đoán trước khi chạy</p></div></div></section><section class="side-panel project"><div class="panel-label">${icon('flag')}ĐÍCH ĐẾN NGÀY 15</div><h3>Chương trình<br>thống kê điểm</h3><p>Tìm điểm cao nhất, tính trung bình và đếm số điểm đạt từ một mảng dữ liệu.</p><div class="project-bottom">${icon('code')}Bạn sẽ tự viết được.</div></section><p class="note">15 ngày để làm quen với nền tảng.<br>Hiểu bài nào, chắc bài đó.</p></aside></div>`;
   }
 
   function codePanel(lesson) {
@@ -134,7 +163,7 @@
 
   function practiceBody(lesson) {
     const draft = state.drafts[lesson.day] ?? lesson.code;
-    return `<div class="lesson-content"><article class="article-panel"><h2>Đến lượt bạn viết</h2><p class="exercise-prompt">${escape(lesson.exercise.prompt)}</p><details class="disclosure"><summary>Mình cần một gợi ý</summary><p>${escape(lesson.exercise.hint)}</p></details><details class="disclosure"><summary>Đối chiếu lời giải</summary><pre>${escape(lesson.exercise.solution)}</pre></details><p class="practice-note">Hãy tự thử trước khi mở lời giải. Phần lời giải có thể là một hàm cần gọi từ <code>main()</code>.</p><button class="button secondary" data-action="tab" data-tab="quiz">Sang phần tự kiểm tra ${icon('arrow')}</button></article><section class="article-panel"><label class="scratch-label" for="scratchpad">Bản nháp C của bạn</label><textarea class="scratchpad" id="scratchpad" spellcheck="false" maxlength="100000" aria-describedby="scratch-help">${escape(draft)}</textarea><div class="practice-actions"><button class="button secondary" data-action="download-code" data-day="${lesson.day}">${icon('download')}Tải tệp .c</button><button class="button secondary" data-action="copy-draft" data-day="${lesson.day}">${icon('copy')}Sao chép code</button><a class="button primary" href="https://www.programiz.com/c-programming/online-compiler/" target="_blank" rel="noopener noreferrer">Mở trình biên dịch C ${icon('arrow-up')}</a></div><p id="scratch-help" class="practice-note">Bản nháp tự lưu trên trình duyệt. Sao chép rồi dán code vào trình biên dịch C để chạy.</p></section></div>`;
+    return `<div class="lesson-content"><article class="article-panel"><h2>Đến lượt bạn viết</h2><p class="exercise-prompt">${escape(lesson.exercise.prompt)}</p><details class="disclosure"><summary>Mình cần một gợi ý</summary><p>${escape(lesson.exercise.hint)}</p></details><details class="disclosure"><summary>Đối chiếu lời giải</summary><pre>${escape(lesson.exercise.solution)}</pre></details><p class="practice-note">Hãy tự thử trước khi mở lời giải. Sao chép toàn bộ chương trình mẫu vào trình biên dịch C, sửa theo đề bài rồi chạy để so sánh kết quả.</p><button class="button secondary" data-action="tab" data-tab="quiz">Sang phần tự kiểm tra ${icon('arrow')}</button></article><section class="article-panel"><label class="scratch-label" for="scratchpad">Bản nháp C của bạn</label><textarea class="scratchpad" id="scratchpad" spellcheck="false" maxlength="100000" aria-describedby="scratch-help">${escape(draft)}</textarea><div class="practice-actions"><button class="button secondary" data-action="download-code" data-day="${lesson.day}">${icon('download')}Tải tệp .c</button><button class="button secondary" data-action="copy-draft" data-day="${lesson.day}">${icon('copy')}Sao chép code</button><a class="button primary" href="https://www.programiz.com/c-programming/online-compiler/" target="_blank" rel="noopener noreferrer">Mở trình biên dịch C ${icon('arrow-up')}</a></div><p id="scratch-help" class="practice-note">Bản nháp tự lưu trên trình duyệt. Sao chép rồi dán code vào trình biên dịch C để chạy.</p></section></div>`;
   }
 
   function quizBody(lesson) {
@@ -145,7 +174,7 @@
 
   function renderLesson(lesson) {
     const labels = {lesson: 'Bài học', practice: 'Thực hành', quiz: 'Tự kiểm tra'};
-    main.innerHTML = `<a class="back-link" href="#lo-trinh">${icon('arrow')}Về lộ trình</a><div class="lesson-intro"><div><div class="lesson-day">NGÀY ${String(lesson.day).padStart(2, '0')} / 07 · ${escape(lesson.duration)}</div><h1>${escape(lesson.title)}</h1><p>${escape(lesson.subtitle)}</p></div><a class="button secondary" href="#tien-do">${icon('chart')}Xem tiến độ</a></div><div class="objective"><strong>Mục tiêu hôm nay</strong>${escape(lesson.objective)}</div><div class="lesson-tabs" role="tablist" aria-label="Phần học">${Object.entries(labels).map(([key, label]) => `<button role="tab" id="tab-${key}" aria-controls="lesson-panel" aria-selected="${key === currentTab}" data-action="tab" data-tab="${key}" class="${currentTab === key ? 'active' : ''}">${label}</button>`).join('')}</div><div id="lesson-panel" role="tabpanel" aria-labelledby="tab-${currentTab}">${currentTab === 'practice' ? practiceBody(lesson) : currentTab === 'quiz' ? quizBody(lesson) : lessonBody(lesson)}</div><div class="next-lesson"><span>${isDone(lesson.day) ? '✓ Bạn đã hoàn thành ngày học này.' : 'Cứ thử từng chút. Bạn đang tiến bộ.'}</span>${lesson.day < 7 ? `<a class="lesson-next-link" href="#bai-${lesson.day + 1}">Ngày ${lesson.day + 1} · ${escape(lessons[lesson.day].shortTitle)} ${icon('arrow')}</a>` : '<a class="lesson-next-link" href="#tien-do">Xem thành quả của bạn →</a>'}</div>`;
+    main.innerHTML = `<a class="back-link" href="#lo-trinh">${icon('arrow')}Về lộ trình</a><div class="lesson-intro"><div><div class="lesson-day">NGÀY ${String(lesson.day).padStart(2, '0')} / ${String(lessonCount).padStart(2, '0')} · ${escape(lesson.duration)}</div><h1>${escape(lesson.title)}</h1><p>${escape(lesson.subtitle)}</p></div><a class="button secondary" href="#tien-do">${icon('chart')}Xem tiến độ</a></div><div class="objective"><strong>Mục tiêu hôm nay</strong>${escape(lesson.objective)}</div><div class="lesson-tabs" role="tablist" aria-label="Phần học">${Object.entries(labels).map(([key, label]) => `<button role="tab" id="tab-${key}" aria-controls="lesson-panel" aria-selected="${key === currentTab}" data-action="tab" data-tab="${key}" class="${currentTab === key ? 'active' : ''}">${label}</button>`).join('')}</div><div id="lesson-panel" role="tabpanel" aria-labelledby="tab-${currentTab}">${currentTab === 'practice' ? practiceBody(lesson) : currentTab === 'quiz' ? quizBody(lesson) : lessonBody(lesson)}</div><div class="next-lesson"><span>${isDone(lesson.day) ? '✓ Bạn đã hoàn thành ngày học này.' : 'Cứ thử từng chút. Bạn đang tiến bộ.'}</span>${lesson.day < lessonCount ? `<a class="lesson-next-link" href="#bai-${lesson.day + 1}">Ngày ${lesson.day + 1} · ${escape(lessons[lesson.day].shortTitle)} ${icon('arrow')}</a>` : '<a class="lesson-next-link" href="#tien-do">Xem thành quả của bạn →</a>'}</div>`;
   }
 
   function renderReference() {
@@ -161,9 +190,9 @@
   }
 
   function renderProgress() {
-    const percent = Math.round(state.completed.length / 7 * 100);
+    const percent = Math.round(state.completed.length / lessonCount * 100);
     const totalScore = lessons.reduce((total, lesson) => total + (scoreFor(lesson) || 0), 0);
-    main.innerHTML = `<div class="page-heading"><h1>Từng dòng code đều có ý nghĩa.</h1><p>Theo dõi những bài bạn đã học và quay lại phần cần luyện thêm.</p></div><section class="progress-hero"><div class="progress-ring" style="background:conic-gradient(#527746 ${percent}%,#c3d7b8 0)"><span>${percent}%</span></div><div><h2>${state.completed.length === 7 ? 'Bạn đã hoàn thành 7 ngày!' : `${state.completed.length} / 7 ngày đã hoàn thành`}</h2><p>${totalScore} / 21 câu trả lời đúng ở các lần kiểm tra gần nhất.</p></div></section><div class="progress-list">${lessons.map(lesson => `<div class="progress-row"><span class="progress-day ${isDone(lesson.day) ? 'done' : ''}">${isDone(lesson.day) ? icon('check') : lesson.day}</span><div><strong>${escape(lesson.title)}</strong><small>${scoreFor(lesson) === null ? 'Chưa làm phần tự kiểm tra' : `Tự kiểm tra ${scoreFor(lesson)}/3 câu đúng`}</small></div><a class="button secondary" href="#bai-${lesson.day}">${isDone(lesson.day) ? 'Ôn lại' : 'Học bài'}${icon('arrow')}</a></div>`).join('')}</div><div class="progress-tools"><button class="button secondary" data-action="export">${icon('download')}Tải bản tiến độ</button><label class="button secondary" for="import-progress">Khôi phục tiến độ<input id="import-progress" type="file" accept="application/json,.json" hidden></label></div><p class="local-notice">Tiến độ và bản nháp được lưu riêng trên trình duyệt này. Tải bản tiến độ để chuyển sang máy khác.</p>`;
+    main.innerHTML = `<div class="page-heading"><h1>Từng dòng code đều có ý nghĩa.</h1><p>Theo dõi những bài bạn đã học và quay lại phần cần luyện thêm.</p></div><section class="progress-hero"><div class="progress-ring" style="background:conic-gradient(#527746 ${percent}%,#c3d7b8 0)"><span>${percent}%</span></div><div><h2>${state.completed.length === lessonCount ? `Bạn đã hoàn thành ${lessonCount} ngày!` : `${state.completed.length} / ${lessonCount} ngày đã hoàn thành`}</h2><p>${totalScore} / ${questionCount} câu trả lời đúng ở các lần kiểm tra gần nhất.</p></div></section><div class="progress-list">${lessons.map(lesson => `<div class="progress-row"><span class="progress-day ${isDone(lesson.day) ? 'done' : ''}">${isDone(lesson.day) ? icon('check') : lesson.day}</span><div><strong>${escape(lesson.title)}</strong><small>${scoreFor(lesson) === null ? 'Chưa làm phần tự kiểm tra' : `Tự kiểm tra ${scoreFor(lesson)}/3 câu đúng`}</small></div><a class="button secondary" href="#bai-${lesson.day}">${isDone(lesson.day) ? 'Ôn lại' : 'Học bài'}${icon('arrow')}</a></div>`).join('')}</div><div class="progress-tools"><button class="button secondary" data-action="export">${icon('download')}Tải bản tiến độ</button><label class="button secondary" for="import-progress">Khôi phục tiến độ<input id="import-progress" type="file" accept="application/json,.json" hidden></label></div><p class="local-notice">Tiến độ 15 ngày và bản nháp được lưu trên trình duyệt này. Tải bản tiến độ để chuyển sang máy khác.</p>${legacyState ? `<p class="local-notice">Lộ trình 15 ngày có tiến độ riêng vì các bài đã được sắp xếp lại từ đầu. Bạn có thể tải dữ liệu của lộ trình trước.</p><button class="button secondary" data-action="export-legacy">${icon('download')}Tải tiến độ 7 ngày cũ</button>` : ''}`;
   }
 
   function render() {
@@ -171,7 +200,7 @@
     let view = 'home';
     let label = 'Tổng quan';
     if (lesson) { view = 'roadmap'; label = `Ngày ${lesson.day}`; renderLesson(lesson); }
-    else if (location.hash === '#lo-trinh') { view = 'roadmap'; label = 'Lộ trình 7 ngày'; renderHome(true); }
+    else if (location.hash === '#lo-trinh') { view = 'roadmap'; label = 'Lộ trình 15 ngày'; renderHome(true); }
     else if (location.hash === '#so-tay') { view = 'reference'; label = 'Sổ tay C'; renderReference(); }
     else if (location.hash === '#tien-do') { view = 'progress'; label = 'Tiến độ của bạn'; renderProgress(); }
     else { renderHome(); }
@@ -243,9 +272,14 @@
         state.completed.push(lesson.day);
         saveState();
         renderLesson(lesson);
-        toast(`Đã hoàn thành ngày ${lesson.day}. ${state.completed.length === 7 ? 'Bạn đã đi hết lộ trình!' : 'Hẹn bạn ở bài tiếp theo!'}`);
+        toast(`Đã hoàn thành ngày ${lesson.day}. ${state.completed.length === lessonCount ? 'Bạn đã đi hết lộ trình!' : 'Hẹn bạn ở bài tiếp theo!'}`);
         break;
-      case 'export': download('tien-do-hoc-c.json', JSON.stringify({app:'c-moi-ngay',version:1,...state}, null, 2), 'application/json'); break;
+      case 'export':
+        download('tien-do-hoc-c-15-ngay.json', JSON.stringify({app:'c-moi-ngay',version:2,curriculum,...state}, null, 2), 'application/json');
+        break;
+      case 'export-legacy':
+        if (legacyState) download('tien-do-hoc-c-7-ngay.json', JSON.stringify({app:'c-moi-ngay',version:1,...legacyState}, null, 2), 'application/json');
+        break;
     }
   });
 
@@ -265,7 +299,7 @@
     if (event.target.matches('#quiz-form input[type="radio"]')) {
       const lesson = lessonFromRoute();
       if (!lesson) return;
-      const attempt = state.quiz[lesson.day] || {answers: Array(3).fill(null), graded: false};
+      const attempt = state.quiz[lesson.day] || {answers: Array(lesson.quiz.length).fill(null), graded: false};
       attempt.answers[Number(event.target.dataset.question)] = Number(event.target.value);
       attempt.graded = false;
       state.quiz[lesson.day] = attempt;
@@ -278,18 +312,25 @@
       const file = event.target.files[0];
       if (!file) return;
       try {
-        if (file.size > 1500000) throw new Error('size');
+        if (file.size > 10 * 1024 * 1024) throw new Error('size');
         const imported = JSON.parse(await file.text());
-        if (imported.app !== 'c-moi-ngay' || imported.version !== 1 || !Array.isArray(imported.completed)) throw new Error('format');
+        if (imported.app !== 'c-moi-ngay' || ![1,2].includes(imported.version) || !Array.isArray(imported.completed)) throw new Error('format');
+        if (imported.version === 1) {
+          const legacy = mergeProgress(readLegacyState() || normalizeState(null, 7), normalizeState(imported, 7));
+          localStorage.setItem(legacyStorageKey, JSON.stringify(legacy));
+          legacyState = legacy;
+          render();
+          toast('Đã lưu bản tiến độ 7 ngày. Lộ trình 15 ngày có tiến độ riêng, bắt đầu từ ngày 1.');
+          return;
+        }
+        if (imported.curriculum !== curriculum) throw new Error('curriculum');
         const incoming = normalizeState(imported);
-        state.completed = [...new Set([...state.completed, ...incoming.completed])];
-        state.drafts = {...state.drafts, ...incoming.drafts};
-        state.quiz = {...state.quiz, ...incoming.quiz};
+        state = mergeProgress(state, incoming);
         saveState();
         render();
         toast('Đã khôi phục tiến độ và bản nháp.');
       } catch { toast('Tệp chưa đúng định dạng. Hãy chọn bản tiến độ đã tải từ web này.'); }
-      event.target.value = '';
+      finally { event.target.value = ''; }
     }
   });
 
@@ -342,6 +383,11 @@
     window.scrollTo(0, 0);
   });
   window.addEventListener('storage', event => {
+    if (event.key === legacyStorageKey) {
+      legacyState = readLegacyState();
+      if (location.hash === '#tien-do') render();
+      return;
+    }
     if (event.key !== storageKey) return;
     state = readState();
     if (document.activeElement?.id !== 'scratchpad') render();
